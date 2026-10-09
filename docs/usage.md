@@ -683,3 +683,137 @@ We recommend adding the following line to your environment to limit this (typica
 ```bash
 NXF_OPTS='-Xms1g -Xmx4g'
 ```
+
+## Staged PBMC analysis
+
+This fork specialises the pipeline for human peripheral blood mononuclear cell (PBMC) scRNA-seq,
+starting from Cell Ranger filtered matrices, and expresses the analysis as three stages, each with its
+own entry point. A stage is launched with `-entry`; the entry points are defined in `main.nf` and all
+run the same underlying workflow, so stages share analysis code.
+
+There is no dedicated profile. Pass the shared PBMC settings explicitly on each command:
+`--species human`, `--save_intermediates true` (so each stage's checkpoint is available to the next),
+and `--ambient_correction decontx`, because SoupX requires unfiltered input and you are starting from
+Cell Ranger filtered matrices.
+
+| Stage | Entry point | Input | Output |
+| ----- | ----------- | ----- | ------ |
+| A: dataset exploration | `stage_a_explore` | samplesheet (`--input`) | integrated, clustered, annotated checkpoint |
+| B: cell type refinement | `stage_b_refine` | `--base_adata` | refined checkpoint with per-label sub-clusters |
+| C: biological interpretation | `stage_c_interpret` | `--base_adata` | differential expression, ligand-receptor, communication results |
+
+Each stage produces a versioned `.h5ad` checkpoint plus its result tables. The checkpoint is the
+contract between stages: a downstream stage reads the previous stage's finalised object through
+`base_adata` and does not recompute earlier work.
+
+### Column names
+
+Column names are not fixed. Provide them per sample in the samplesheet: `condition_col`
+for the condition, `donor_col` for the biological replicate, `label_col` for cell type, and `batch_col`
+for batch. The pipeline renames these to the canonical `condition`, `donor`, `label`, and `batch`
+during unification. On a `base_adata` re-entry run, set `base_condition_col`, `base_donor_col`, and
+`base_label_col` to match the columns already present in the base object.
+
+### Stage A: dataset exploration
+
+Stage A takes the samplesheet, runs quality control, integration, clustering, and annotation, and
+records which embedding and resolution should be carried forward.
+
+```bash
+nextflow run . \
+    -entry stage_a_explore \
+    -profile docker \
+    --input samplesheet.csv \
+    --outdir results/stage_a \
+    --species human \
+    --save_intermediates true \
+    --ambient_correction decontx \
+    --analysis_plan conf/pbmc/analysis_plan_stage_a_explore.csv
+```
+
+Stage A sets `scib` to `true`, so integration benchmarking runs and the metrics tables are published
+under `03_combine/integrate/scib_metrics/`. Compare candidate integrations by also passing, for
+example, `--integration_methods scvi,symphony,bbknn,combat`, and choose the embedding that best mixes
+batches while preserving cell types. Pick the clustering resolution to carry forward from the
+per-resolution marker tables. Both decisions are recorded in your `project.yaml` (see below).
+
+### Stage B: cell type refinement
+
+Stage B reuses the stage A checkpoint. It skips integration, runs clustering on the chosen embedding,
+and adds per-label sub-clustering so the major lineages (CD4 T, CD8 T, NK, B, monocyte, dendritic
+cell) can be resolved further. Stage B sets `cluster_per_label` to `true`.
+
+```bash
+nextflow run . \
+    -entry stage_b_refine \
+    -profile docker \
+    --base_adata results/stage_a/09_finalized/<object>.h5ad \
+    --base_embeddings X_scvi \
+    --base_label_col label \
+    --outdir results/stage_b \
+    --save_intermediates true \
+    --analysis_plan conf/pbmc/analysis_plan_stage_b_refine.csv
+```
+
+Set `base_embeddings` to the embedding key present in the base object (for example `X_scvi`, or a
+comma-separated list). Sub-cluster keys follow the filesystem-safe subset names used in the analysis
+plan, so a label value with spaces becomes an underscore in `subset`.
+
+### Stage C: biological interpretation
+
+Stage C reads the stage B checkpoint and runs the interpretation suite: differential expression,
+pseudobulk aggregation, ligand-receptor analysis (LIANA), and optionally Tensor-cell2cell.
+
+```bash
+nextflow run . \
+    -entry stage_c_interpret \
+    -profile docker \
+    --base_adata results/stage_b/09_finalized/<object>.h5ad \
+    --base_embeddings X_scvi \
+    --base_label_col label \
+    --reference_condition <control-level> \
+    --outdir results/stage_c \
+    --analysis_plan conf/pbmc/analysis_plan_stage_c_interpret.csv
+```
+
+Stage C's plan enables `paga`, `liana`, `de`, and `aggregate_per_cell_annotation`, with `wilcoxon`,
+`pydeseq2`, and `edgepython` as differential expression engines. Any pseudobulk contrast requires a
+`donor` column in the base object; set `base_donor_col` if it is named differently.
+`reference_condition` must be a level of your condition column when `pydeseq2` or `edgepython` are
+used. Set `cell2cell` to `true` to add Tensor-cell2cell.
+
+To export pseudobulk matrices without running pseudobulk differential expression, pass
+`--pseudobulk true` and leave `pydeseq2` and `edgepython` out of the plan. Matrices are published
+under `06_per_group/{integration}/{subset}/{grouping}/differential_expression/pseudobulk/aggregation/`
+and can drive a comparison across categories outside the pipeline.
+
+### `project.yaml` as the state carrier
+
+The stages are stateless; the record of which embedding, resolution, and labels were chosen lives in
+a `project.yaml` that you maintain and pass with `-params-file`. The pipeline only reads it, so keep
+it under version control alongside your results.
+
+```yaml
+project_id: PBMC001
+current_stage: B
+selected_integration: scvi
+selected_embedding: X_scvi
+selected_resolution:
+  - 0.5
+label_column: label
+artifacts:
+  stage_a:
+    adata: results/stage_a/09_finalized/<object>.h5ad
+  stage_b:
+    adata: results/stage_b/09_finalized/<object>.h5ad
+```
+
+### Notes for this fork
+
+This staged layout is a deliberate departure from the standard nf-core template: the repository adds
+named workflows to `main.nf`, so `nf-core pipelines lint` is not expected to pass unchanged. There is
+no `pbmc` profile; pass the shared PBMC settings explicitly, as shown in the stage commands above. Use
+`--ambient_correction decontx` for Cell Ranger filtered-only input, since SoupX requires unfiltered
+matrices. Pass `--save_intermediates true` so that each stage's checkpoint is available to the next.
+Each stage can also be launched without `-entry` by passing the same parameters to the default entry
+point, but the `-entry` form is the intended interface.

@@ -216,7 +216,11 @@ workflow NFCORE_SCDOWNSTREAM {
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-workflow {
+//
+// WORKFLOW: Shared launcher. The default entry point and the three stage entry points
+// all call this so the argument list stays in step with NFCORE_SCDOWNSTREAM.
+//
+workflow RUN_SCDOWNSTREAM {
 
     main:
     //
@@ -225,7 +229,7 @@ workflow {
     PIPELINE_INITIALISATION (
         params.version,
         params.validate_params,
-        params.monochrome_logs,
+                params.monochrome_logs,
         args,
         params.outdir,
         params.help,
@@ -354,6 +358,65 @@ workflow {
         params.monochrome_logs,
         NFCORE_SCDOWNSTREAM.out.multiqc_report
     )
+}
+
+/*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    DEFAULT ENTRY POINT
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*/
+
+workflow {
+
+    main:
+    RUN_SCDOWNSTREAM ()
+}
+
+/*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    STAGE ENTRY POINTS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Run a single stage with -entry, for example:
+        nextflow run . -entry stage_a_explore -profile pbmc,docker ...
+    Each stage sets its own defaults and then runs the shared launcher.
+*/
+
+//
+// WORKFLOW: Stage A, dataset exploration. Samplesheet in, exploration checkpoint out.
+//
+workflow stage_a_explore {
+
+    main:
+    if (!params.input) {
+        error "stage_a_explore requires --input (a samplesheet)."
+    }
+    params.scib = true
+    RUN_SCDOWNSTREAM ()
+}
+
+//
+// WORKFLOW: Stage B, cell type refinement. base_adata in, refined checkpoint out.
+//
+workflow stage_b_refine {
+
+    main:
+    if (!params.base_adata) {
+        error "stage_b_refine requires --base_adata (a stage A artefact)."
+    }
+    params.cluster_per_label = true
+    RUN_SCDOWNSTREAM ()
+}
+
+//
+// WORKFLOW: Stage C, biological interpretation. base_adata in, biological results out.
+//
+workflow stage_c_interpret {
+
+    main:
+    if (!params.base_adata) {
+        error "stage_c_interpret requires --base_adata (a stage B artefact)."
+    }
+    RUN_SCDOWNSTREAM ()
 }
 
 /*
