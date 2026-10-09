@@ -9,7 +9,6 @@ Initial release of nf-core/scdownstream, created with the [nf-core](https://nf-c
 
 ### `Changed`
 
-- Refactor `main.nf` so the default entry point and the three stage entry points share a single `RUN_SCDOWNSTREAM` launcher, keeping the `NFCORE_SCDOWNSTREAM` argument list in one place.
 - Migrate local modules to nf-core container metadata, Wave images and Conda lock files by @nictru and Codex [[#311](https://github.com/nf-core/scdownstream/pull/311)].
 - Write H5AD strings in the legacy encoding pipeline-wide via `ANNDATA_ALLOW_WRITE_NULLABLE_STRINGS=0`, replacing per-module workarounds, and move `ADATA_MYGENE`, `ADATA_SETINDEX`, `ADATA_UNIFY`, `ADATA_EXTEND` and `ADATA_SPLITCOL` to anndata 0.13 [[#311](https://github.com/nf-core/scdownstream/pull/311)].
 - Split nf-test CI into a module/subworkflow tier on 4-CPU runners and a pipeline tier on 16-CPU runners with one pipeline test per runner [[#317](https://github.com/nf-core/scdownstream/pull/317)].
@@ -41,9 +40,6 @@ Initial release of nf-core/scdownstream, created with the [nf-core](https://nf-c
 
 ### `Added`
 
-- Add stage entry points `stage_a_explore`, `stage_b_refine`, and `stage_c_interpret` in `main.nf`, launchable with `-entry` and each producing one checkpoint consumed by the next stage via `base_adata`.
-- Add per-stage analysis plans `conf/pbmc/analysis_plan_stage_a_explore.csv`, `conf/pbmc/analysis_plan_stage_b_refine.csv`, and `conf/pbmc/analysis_plan_stage_c_interpret.csv`.
-- Document the staged PBMC workflow, the column-name parameters, and the `project.yaml` state carrier in `docs/usage.md`.
 - Add EmptyDrops from DropletUtils as an alternative empty droplet removal method, selectable with `--empty_droplet_removal emptydrops` and tuned via `--emptydrops_lower` and `--emptydrops_fdr` ([#169](https://github.com/nf-core/scdownstream/issues/169)) by @nictru and Cursor [[#322](https://github.com/nf-core/scdownstream/pull/322)].
 - Add opt-in `--tords` to convert the final AnnData object to RDS via `ADATA_TORDS` (off by default).
 - Add LIANA rank-aggregate dotplot, circle, and tileplot PNGs with MultiQC embedding.
