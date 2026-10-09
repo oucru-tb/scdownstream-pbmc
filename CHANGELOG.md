@@ -40,6 +40,12 @@ Initial release of nf-core/scdownstream, created with the [nf-core](https://nf-c
 
 ### `Added`
 
+- Add `--stop_after_annotation` to stop after integration, clustering and per-cell annotation, before the per-group downstream analyses, and publish the finalised object for reuse.
+- Add a downstream-only entry point via `--curated_h5ad`, which starts from an already curated AnnData object and runs clustering and the per-group analyses without re-running quality control, annotation or integration.
+- Add a review bundle (`--review_bundle`) that exports a canonical `cell_type` column (`--cell_type_col`, sourced from `--cell_type_source_cols`), a CELLxGENE-ready AnnData object, per-annotator label CSVs and UMAP plots under `12_review_bundle/`.
+- Add `preprocess` and `downstream` configuration profiles that bundle the new entry-point defaults.
+- Add `ADATA_SETCELLTYPE` and `ADATA_REVIEWBUNDLE` local modules and a `REVIEW_BUNDLE` local subworkflow.
+
 - Add EmptyDrops from DropletUtils as an alternative empty droplet removal method, selectable with `--empty_droplet_removal emptydrops` and tuned via `--emptydrops_lower` and `--emptydrops_fdr` ([#169](https://github.com/nf-core/scdownstream/issues/169)) by @nictru and Cursor [[#322](https://github.com/nf-core/scdownstream/pull/322)].
 - Add opt-in `--tords` to convert the final AnnData object to RDS via `ADATA_TORDS` (off by default).
 - Add LIANA rank-aggregate dotplot, circle, and tileplot PNGs with MultiQC embedding.

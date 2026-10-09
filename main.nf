@@ -44,12 +44,18 @@ workflow NFCORE_SCDOWNSTREAM {
     scvi_max_epochs               //   value: integer
     mito_genes                    //   value: string
     sample_n                      //   value: string
+    cell_cycle_scoring            //   value: boolean   value: string
     sample_fraction               //   value: string
-    cell_cycle_scoring            //   value: boolean
     s_genes                       //    path: file or []
     g2m_genes                     //    path: file or []
     species                       //   value: string
     qc_only                       //   value: boolean
+    stop_after_annotation         //   value: boolean
+    curated_h5ad                  //   value: boolean
+    review_bundle                 //   value: boolean
+    cell_type_col                 //   value: string
+    cell_type_source_cols         //   value: string
+    review_bundle_group_cols      //   value: string
     celldex_reference             //   value: string
     celltypist_model              //   value: string
     azimuth                       //   value: boolean
@@ -140,6 +146,12 @@ workflow NFCORE_SCDOWNSTREAM {
         g2m_genes,
         species,
         qc_only,
+        stop_after_annotation,
+        curated_h5ad,
+        review_bundle,
+        cell_type_col,
+        cell_type_source_cols,
+        review_bundle_group_cols,
         celldex_reference,
         celltypist_model,
         azimuth,
@@ -236,8 +248,9 @@ workflow {
     //
     // WORKFLOW: Run main workflow
     //
-    ch_base_adata = params.base_adata
-        ? channel.value([[id: "base"], file(params.base_adata, checkIfExists: true)])
+    def base_h5ad_path = params.curated_h5ad ?: params.base_adata
+    ch_base_adata = base_h5ad_path
+        ? channel.value([[id: "base"], file(base_h5ad_path, checkIfExists: true)])
         : channel.value([[], []])
 
     def s_genes_file = params.cell_cycle_scoring
@@ -257,11 +270,12 @@ workflow {
         ? file(params.interesting_genes, checkIfExists: true)
         : []
 
+        
     NFCORE_SCDOWNSTREAM (
         PIPELINE_INITIALISATION.out.samplesheet,
         ch_base_adata,
-        params.base_adata != null,
-        params.input,
+        base_h5ad_path != null,
+        params.curated_h5ad ? null : params.input,
         params.empty_droplet_removal,
         params.ambient_correction,
         params.ambient_corrected_integration,
@@ -277,6 +291,12 @@ workflow {
         g2m_genes_file,
         params.species,
         params.qc_only,
+        params.stop_after_annotation,
+        params.curated_h5ad != null,
+        params.review_bundle,
+        params.cell_type_col,
+        params.cell_type_source_cols,
+        params.review_bundle_group_cols,
         params.celldex_reference,
         params.celltypist_model,
         params.azimuth,

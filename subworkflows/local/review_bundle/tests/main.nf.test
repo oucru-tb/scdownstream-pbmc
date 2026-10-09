@@ -1,0 +1,75 @@
+nextflow_workflow {
+
+    name "Test Workflow REVIEW_BUNDLE"
+    script "subworkflows/local/review_bundle/main.nf"
+    workflow "REVIEW_BUNDLE"
+
+    tag "subworkflows"
+    tag "subworkflows_local"
+
+    test("Should run without failures - stub") {
+
+        options '-stub'
+        config './nextflow.config'
+
+        when {
+            params {
+                outdir = "$outputDir"
+            }
+            workflow {
+                """
+                input[0] = channel.of([
+                    [id: 'test'],
+                    file(params.pipelines_testdata_base_path + '/pbmc/with_label_and_condition_pca.h5ad', checkIfExists: true)
+                ])
+                input[1] = 'cell_type'
+                input[2] = 'annotation:celltypist:Adult_COVID19_PBMC:per_cell'
+                input[3] = ''
+                """
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert snapshot(workflow.out).match()
+        }
+
+    }
+
+    test("Should run without failures - label as cell type source") {
+
+        config './nextflow.config'
+
+        when {
+            params {
+                outdir = "$outputDir"
+            }
+            workflow {
+                """
+                input[0] = channel.of([
+                    [id: 'test'],
+                    file(params.pipelines_testdata_base_path + '/pbmc/with_label_and_condition_pca.h5ad', checkIfExists: true)
+                ])
+                input[1] = 'cell_type'
+                input[2] = 'label'
+                input[3] = 'leiden'
+                """
+            }
+        }
+
+        then {
+            def adata = anndata(workflow.out.h5ad[0][1])
+            assert workflow.success
+            with(adata) {
+                assert "cell_type" in obs.colnames
+            }
+            assert snapshot(
+                workflow.out.h5ad,
+                workflow.out.versions.collect { path(it).yaml },
+                adata.yaml
+            ).match()
+        }
+
+    }
+
+}

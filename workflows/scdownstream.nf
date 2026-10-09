@@ -15,6 +15,7 @@ include { SUB_INTEGRATE                        } from '../subworkflows/local/sub
 include { CLUSTER                              } from '../subworkflows/local/cluster'
 include { PER_GROUP                            } from '../subworkflows/local/per_group'
 include { FINALIZE                             } from '../subworkflows/local/finalize'
+include { REVIEW_BUNDLE                        } from '../subworkflows/local/review_bundle'
 include { MULTIQC                              } from '../modules/nf-core/multiqc'
 include { paramsSummaryMap                     } from 'plugin/nf-schema'
 include { paramsSummaryMultiqc                 } from '../subworkflows/nf-core/utils_nfcore_pipeline'
@@ -48,10 +49,16 @@ workflow SCDOWNSTREAM {
     g2m_genes                     //    path: file or []
     species                       //   value: string
     qc_only                       //   value: boolean
-    celldex_reference              //   value: string
-    celltypist_model               //   value: string
-    azimuth                        //   value: boolean
-    cytetype_study_context         //   value: string
+    stop_after_annotation         //   value: boolean
+    curated_h5ad                  //   value: boolean
+    review_bundle                 //   value: boolean
+    cell_type_col                 //   value: string
+    cell_type_source_cols         //   value: string
+    review_bundle_group_cols      //   value: string
+    celldex_reference             //   value: string
+    celltypist_model              //   value: string
+    azimuth                       //   value: boolean
+    cytetype_study_context        //   value: string
     unify_gene_symbols            //   value: boolean
     duplicate_var_resolution      //   value: string
     aggregate_isoforms            //   value: boolean
@@ -336,56 +343,58 @@ workflow SCDOWNSTREAM {
         ch_obsm = ch_obsm.mix(CLUSTER.out.obsm)
         ch_multiqc_files = ch_multiqc_files.mix(CLUSTER.out.multiqc_files)
 
-        ch_h5ad_both = CLUSTER.out.h5ad_clustering
+                        ch_h5ad_both = CLUSTER.out.h5ad_clustering
             .map { meta, h5ad ->
                 [meta + [obs_key: "${meta.id}_leiden"], h5ad]
             }
 
-        PER_GROUP (
-            // Run on each clustering resolution for each embedding
-            ch_h5ad_both.mix(
-                // And on the label column for each embedding
-                CLUSTER.out.h5ad_neighbors.map {
+        if (!stop_after_annotation) {
+            PER_GROUP (
+                // Run on each clustering resolution for each embedding
+                ch_h5ad_both.mix(
+                    // And on the label column for each embedding
+                    CLUSTER.out.h5ad_neighbors.map {
+                        meta, h5ad ->
+                        [meta + [obs_key: grouping_col], h5ad]
+                    }
+                ).map {
                     meta, h5ad ->
-                    [meta + [obs_key: grouping_col], h5ad]
-                }
-            ).map {
-                meta, h5ad ->
-                [meta + [condition_col: condition_col, donor_col: donor_col], h5ad]
-            },
-            // Run on each clustering (there is one clustering per embedding and resolution)
-            ch_h5ad_both.mix(
-                // And on the label column
-                ch_label_grouping.map {
+                    [meta + [condition_col: condition_col, donor_col: donor_col], h5ad]
+                },
+                // Run on each clustering (there is one clustering per embedding and resolution)
+                ch_h5ad_both.mix(
+                    // And on the label column
+                    ch_label_grouping.map {
+                        meta, h5ad ->
+                        [meta + [obs_key: grouping_col], h5ad]
+                    }
+                ).map {
                     meta, h5ad ->
-                    [meta + [obs_key: grouping_col], h5ad]
-                }
-            ).map {
-                meta, h5ad ->
-                [meta + [condition_col: condition_col, donor_col: donor_col], h5ad]
-            },
-            skip_liana,
-            liana_n_perms,
-            liana_max_cells,
-            liana_subsample_strategy,
-            liana_subsample_seed,
-            cell2cell,
-            cell2cell_rank,
-            cell2cell_seed,
-            cytetype_study_context,
-            de_methods,
-            pseudobulk,
-            pseudobulk_min_num_cells,
-            pseudobulk_min_total_counts,
-            ch_per_cell_annotation_columns,
-            reference_condition ?: '',
-            interesting_genes ?: [],
-            species,
-        )
+                    [meta + [condition_col: condition_col, donor_col: donor_col], h5ad]
+                },
+                skip_liana,
+                liana_n_perms,
+                liana_max_cells,
+                liana_subsample_strategy,
+                liana_subsample_seed,
+                cell2cell,
+                cell2cell_rank,
+                cell2cell_seed,
+                cytetype_study_context,
+                de_methods,
+                pseudobulk,
+                pseudobulk_min_num_cells,
+                pseudobulk_min_total_counts,
+                ch_per_cell_annotation_columns,
+                reference_condition ?: '',
+                interesting_genes ?: [],
+                species,
+            )
 
-        ch_uns = ch_uns.mix(PER_GROUP.out.uns)
-        ch_multiqc_files = ch_multiqc_files.mix(PER_GROUP.out.multiqc_files)
-        ch_obs = ch_obs.mix(PER_GROUP.out.obs)
+            ch_uns = ch_uns.mix(PER_GROUP.out.uns)
+            ch_multiqc_files = ch_multiqc_files.mix(PER_GROUP.out.multiqc_files)
+            ch_obs = ch_obs.mix(PER_GROUP.out.obs)
+        }
 
         FINALIZE (
             ch_finalization_base,
@@ -397,6 +406,15 @@ workflow SCDOWNSTREAM {
             prep_cellxgene,
             tords
         )
+
+        if (review_bundle) {
+            REVIEW_BUNDLE (
+                FINALIZE.out.h5ad,
+                cell_type_col,
+                cell_type_source_cols,
+                review_bundle_group_cols,
+            )
+        }
     }
 
     //

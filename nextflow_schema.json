@@ -251,12 +251,20 @@
             "type": "object",
             "fa_icon": "fas fa-layer-group",
             "description": "If you already produced an integrated AnnData object with this pipeline and want to add new data to it, you can specify the path to the base AnnData object and some information about it here. This will allow you to project the new data onto the existing integrated object.",
-            "properties": {
+                        "properties": {
                 "base_adata": {
                     "type": "string",
                     "format": "file-path",
                     "description": "If you want to project new data onto an already integrated object, specify the path to the base AnnData object here",
                     "help_text": "The file should be in the .h5ad format.",
+                    "pattern": "^\\S+\\.h5ad$",
+                    "exists": true
+                },
+                "curated_h5ad": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Path to an already curated AnnData object for downstream-only runs.",
+                    "help_text": "Starts the pipeline from a curated object (for example the finalised object produced by `--stop_after_annotation`). Quality control, ambient correction, doublet detection, per-cell annotation and integration are skipped; dimensionality reduction, clustering and the per-group downstream analyses run on the curated object. Requires the embeddings listed in `base_embeddings` (or `integrate_per_label`). Cannot be combined with `--input`. The `downstream` profile sets sensible defaults for this mode.",
                     "pattern": "^\\S+\\.h5ad$",
                     "exists": true
                 },
@@ -334,6 +342,38 @@
                     "pattern": "^\\S+\\.csv$"
                 }
             }
+                },
+        "review_bundle_options": {
+            "title": "Review bundle options",
+            "type": "object",
+            "fa_icon": "fas fa-box-open",
+            "description": "Options for exporting a review bundle with a CELLxGENE-ready object, per-annotator label tables and UMAP plots.",
+            "properties": {
+                "review_bundle": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Export a review bundle after finalisation.",
+                    "help_text": "Writes a CELLxGENE-ready AnnData object, one CSV of per-cell labels per annotator tool and UMAP plots coloured by the canonical cell type and the `review_bundle_group_cols` columns under `12_review_bundle/`."
+                },
+                "cell_type_col": {
+                    "type": "string",
+                    "default": "cell_type",
+                    "description": "Name of the canonical cell type column written to obs and used for plotting and downstream grouping.",
+                    "help_text": "The column is populated from the first available column in `cell_type_source_cols`."
+                },
+                "cell_type_source_cols": {
+                    "type": "string",
+                    "default": "annotation:celltypist:per_cell annotation:azimuth:fine:per_cell",
+                    "description": "Priority-ordered, space-separated list of obs columns used to populate `cell_type_col`.",
+                    "help_text": "The first column present in obs wins. Defaults try CellTypist and Pan-human Azimuth fine labels. Add `annotation:singler:*:per_cell` style columns to prefer SingleR."
+                },
+                "review_bundle_group_cols": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Space-separated list of additional obs columns to plot in the review bundle and retain in the CELLxGENE object.",
+                    "help_text": "For example `leiden` or a cluster column such as `scvi-global-1.0_leiden`."
+                }
+            }
         },
         "tool_options": {
             "title": "Tool options",
@@ -390,10 +430,16 @@
             "title": "Pipeline options",
             "type": "object",
             "description": "Options for selecting which tools should be used for certain tasks",
-            "properties": {
+                        "properties": {
                 "qc_only": {
                     "type": "boolean",
                     "description": "Only run the preprocessing steps, skip the integration and clustering steps"
+                },
+                "stop_after_annotation": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Stop after clustering and per-cell annotation, before the per-group downstream analyses.",
+                    "help_text": "Runs loading, quality control, per-cell annotation, integration, dimensionality reduction and clustering, then stops before the per-group analyses (differential expression, LIANA, Tensor-cell2cell) and the cluster-level annotation. The finalised object is still written to `09_finalized/`. Combined with `review_bundle`, this is the preprocess entry point used by the `preprocess` profile."
                 },
                 "skip_liana": {
                     "type": "boolean",
@@ -759,11 +805,14 @@
         {
             "$ref": "#/$defs/integration_options"
         },
-        {
+                {
             "$ref": "#/$defs/extension_options"
         },
         {
             "$ref": "#/$defs/clustering_options"
+        },
+        {
+            "$ref": "#/$defs/review_bundle_options"
         },
         {
             "$ref": "#/$defs/tool_options"

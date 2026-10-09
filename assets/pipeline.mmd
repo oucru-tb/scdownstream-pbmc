@@ -1,0 +1,127 @@
+%%metro title: nf-core/scdownstream
+%%metro style: nfcore
+
+%% ====================================
+%% LINES
+%% ====================================
+
+%%metro line: qc      | QC only            | #ee8137
+%%metro line: refext  | Reference extension| #e7d16b
+%%metro line: refmap  | Reference mapping  | #4185f4
+%%metro line: denovo  | De novo integration| #28b463
+%%metro line: subint  | Sub integration    | #f66b6b
+
+graph LR
+
+%% ====================================
+%% INPUT
+%% ====================================
+
+subgraph INPUT["Input"]
+
+raw[h5ad]
+
+empty["Empty droplet\nremoval"]
+
+ambient["Ambient RNA\ncorrection"]
+
+threshold[Thresholding]
+
+doublet["Doublet\ndetection"]
+
+raw -->|qc,refext,refmap,denovo,subint| empty
+empty -->|qc,refext,refmap,denovo,subint| ambient
+ambient -->|qc,refext,refmap,denovo,subint| threshold
+threshold -->|qc,refext,refmap,denovo,subint| doublet
+
+end
+
+%% ====================================
+%% QC OUTPUT
+%% ====================================
+
+subgraph QC["QC output"]
+
+qc_h5ad["Quality controlled\nh5ad"]
+
+qc_report["MultiQC\nReport"]
+
+doublet -->|qc| qc_h5ad
+qc_h5ad -->|qc| qc_report
+
+end
+
+%% ====================================
+%% FEATURE SELECTION
+%% ====================================
+
+subgraph FEATURES["Feature selection"]
+
+feature["Highly variable genes\nPearson residuals\nScran deviance"]
+
+end
+
+doublet -->|refext,refmap,denovo,subint| feature
+
+
+%% ====================================
+%% EXTERNAL INPUTS
+%% ====================================
+
+refmodel["Pre-trained\nintegration model"]
+
+previous["Output of\nprevious run"]
+
+%% ====================================
+%% INTEGRATION
+%% ====================================
+
+subgraph INTEGRATION["Integration"]
+
+integration[Integration]
+
+end
+
+feature -->|refext,refmap,denovo| integration
+
+refmodel -->|refmap| integration
+
+previous -->|subint| integration
+
+
+%% ====================================
+%% DOWNSTREAM
+%% ====================================
+
+subgraph DOWNSTREAM["Downstream analysis"]
+
+cluster[Clustering]
+
+annotation[Annotation]
+
+cci["Cell-cell\ninteraction"]
+
+de["Differential\nexpression"]
+
+integration -->|refext,refmap,denovo,subint| cluster
+
+cluster -->|refext,refmap,denovo,subint| annotation
+
+annotation -->|refext,refmap,denovo,subint| cci
+
+cci -->|refext,refmap,denovo,subint| de
+
+end
+
+
+%% ====================================
+%% OUTPUT
+%% ====================================
+
+final_h5ad["Final\nh5ad"]
+
+final_report["MultiQC\nReport"]
+
+de -->|refext,refmap,denovo,subint| final_h5ad
+
+final_h5ad -->|refext,refmap,denovo,subint| final_report

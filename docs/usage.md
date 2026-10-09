@@ -306,6 +306,40 @@ For (2), pass the integrated `.h5ad` from the original run as [`base_adata`](htt
 
 Pre-trained scVI models are also shared on [scvi-hub](https://huggingface.co/scvi-tools).
 
+### Preprocess and downstream entry points
+
+The pipeline exposes two convenience profiles that split an atlas build into a preprocess stage and a downstream stage, so that downstream analyses can be re-run quickly on a fixed, curated object.
+
+**Preprocess** runs loading, quality control, ambient correction and doublet detection, per-cell annotation, sample merging, integration, dimensionality reduction and clustering, then stops before the per-group analyses (differential expression, LIANA, Tensor-cell2cell, cluster-level annotation):
+
+```bash
+nextflow run nf-core/scdownstream -profile docker,preprocess --input samplesheet.csv --outdir results
+```
+
+This is controlled by [`stop_after_annotation`](https://nf-co.re/scdownstream/parameters#stop_after_annotation), which can also be set directly on any run. The finalised AnnData object is still written to `09_finalized/`. Setting `review_bundle` (enabled by the `preprocess` profile, see below) also exports a review bundle under `12_review_bundle/`.
+
+**Downstream** starts from an already curated AnnData object, for example the `09_finalized/{id}.h5ad` produced by a preprocess run:
+
+```bash
+nextflow run nf-core/scdownstream -profile docker,downstream \
+    --curated_h5ad results/09_finalized/base.h5ad \
+    --base_embeddings scvi \
+    --outdir results_downstream
+```
+
+Quality control, ambient correction, doublet detection, per-cell annotation and integration are all skipped. The pipeline reuses the embeddings listed in [`base_embeddings`](https://nf-co.re/scdownstream/parameters#base_embeddings) and runs dimensionality reduction, clustering and the per-group downstream analyses followed by finalisation. The downstream profile defaults [`base_label_col`](https://nf-co.re/scdownstream/parameters#base_label_col) to `cell_type`. `--curated_h5ad` is mutually exclusive with `--input` and `--base_adata`, and requires `--base_embeddings` (or `--integrate_per_label`).
+
+### Review bundle (cell type and CELLxGENE)
+
+Set [`review_bundle`](https://nf-co.re/scdownstream/parameters#review_bundle) to `true` to export a review bundle after finalisation under `12_review_bundle/`. The bundle contains:
+
+- a canonical [`cell_type_col`](https://nf-co.re/scdownstream/parameters#cell_type_col) column populated from the first available column in [`cell_type_source_cols`](https://nf-co.re/scdownstream/parameters#cell_type_source_cols) (defaults to CellTypist then Pan-human Azimuth fine labels);
+- a CELLxGENE-ready AnnData object (`{id}.h5ad`) filtered to the embeddings, the canonical cell type and the [`review_bundle_group_cols`](https://nf-co.re/scdownstream/parameters#review_bundle_group_cols) columns;
+- one CSV of per-cell labels per annotator tool under `annotations/`;
+- UMAP plots coloured by the canonical cell type and each grouping column under `plots/`.
+
+The object with the canonical `cell_type` column is additionally published as `09_finalized/{id}_celltype.h5ad` so it can be fed back as [`curated_h5ad`](https://nf-co.re/scdownstream/parameters#curated_h5ad).
+
 ### Integration benchmarking (scib-metrics)
 
 You can run [scib-metrics](https://scib-metrics.readthedocs.io/) on each integration output by setting [`scib`](https://nf-co.re/scdownstream/parameters#scib) to `true` (default is `false`).
@@ -596,6 +630,12 @@ This is _not_ recommended, since it can lead to different results on different m
   - Swaps R-based QC defaults for Python tools: scAR (`--ambient_correction`) instead of decontX, Scrublet (`--doublet_detection`) instead of scDblFinder, and scanpy HVGs (`--feature_selection hvgs`) instead of deviance feature selection
   - Combine with a software profile, e.g. `-profile docker,python_only`
   - scAR requires filtered and unfiltered matrices; use `--ambient_correction none` for filtered-only samples
+- `preprocess`
+  - Entry point for atlas builds: runs up to clustering and stops before the per-group downstream analyses (`--stop_after_annotation`), publishes a review bundle, and prepares the cellxgene object
+  - Combine with a software profile, e.g. `-profile docker,preprocess`
+- `downstream`
+  - Entry point for downstream-only runs from an already curated AnnData object supplied via `--curated_h5ad`; defaults `--base_label_col` to `cell_type` and publishes a review bundle
+  - Combine with a software profile, e.g. `-profile docker,downstream`
 - `docker`
   - A generic configuration profile to be used with [Docker](https://docker.com/)
 - `singularity`

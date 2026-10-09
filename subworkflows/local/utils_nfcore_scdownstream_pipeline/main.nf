@@ -374,8 +374,24 @@ def pseudobulkDeEnabled(meta) {
 // Check and validate pipeline parameters
 //
 def validateInputParameters() {
-    if (!params.input && !(params.base_adata && params.base_label_col && (params.base_embeddings || params.integrate_per_label))) {
+    if (params.curated_h5ad && params.input) {
+        throw new Exception("curated_h5ad and input are mutually exclusive; provide only one")
+    }
+
+    if (params.curated_h5ad && params.base_adata) {
+        throw new Exception("curated_h5ad and base_adata are mutually exclusive; provide only one")
+    }
+
+    if (!params.input && !params.curated_h5ad && !(params.base_adata && params.base_label_col && (params.base_embeddings || params.integrate_per_label))) {
         throw new Exception("Either an input samplesheet or (base_adata && base_label_col && (base_embeddings || integrate_per_label)) must be provided")
+    }
+
+    if (params.curated_h5ad && !(params.base_embeddings || params.integrate_per_label)) {
+        throw new Exception("curated_h5ad requires base_embeddings (the embeddings to reuse) or integrate_per_label")
+    }
+
+    if (params.stop_after_annotation && params.qc_only) {
+        throw new Exception("stop_after_annotation and qc_only are mutually exclusive")
     }
 
     if (params.qc_only && !params.input) {
@@ -386,9 +402,9 @@ def validateInputParameters() {
         throw new Exception("integrate_per_label_whitelist requires integrate_per_label to be true")
     }
 
-    def integration_methods = params.integration_methods.split(',').collect { it -> it.trim().toLowerCase() }
-    def is_extension = params.input && params.base_adata
-    def is_per_label_base_integration = !params.input && params.base_adata && params.integrate_per_label
+        def integration_methods = params.integration_methods.split(',').collect { it -> it.trim().toLowerCase() }
+    def is_extension = params.input && (params.base_adata || params.curated_h5ad)
+    def is_per_label_base_integration = !params.input && (params.base_adata || params.curated_h5ad) && params.integrate_per_label
 
     if (is_extension && (integration_methods - ['scvi', 'scanvi', 'scimilarity', 'symphony']).size() > 0) {
         throw new Exception("Only scvi, scanvi, scimilarity and symphony integration methods are supported if base_adata is provided")
@@ -427,12 +443,12 @@ def validateInputParameters() {
         )
     }
 
-    if (pseudobulkingRequired() && params.base_adata) {
-        def ad = anndata(file(params.base_adata, checkIfExists: true))
+        if (pseudobulkingRequired() && (params.base_adata || params.curated_h5ad)) {
+        def ad = anndata(file(params.base_adata ?: params.curated_h5ad, checkIfExists: true))
         def donor_col = params.input ? 'donor' : (params.base_donor_col ?: 'donor')
         if (!(donor_col in ad.obs.colnames)) {
             throw new Exception(
-                "Pseudobulking requires column '${donor_col}' in base_adata. Available obs columns: ${ad.obs.colnames.join(', ')}."
+                "Pseudobulking requires column '${donor_col}' in the curated/base AnnData object. Available obs columns: ${ad.obs.colnames.join(', ')}."
             )
         }
     }

@@ -1,0 +1,68 @@
+nextflow_process {
+
+    name "Test Process ADATA_REVIEWBUNDLE"
+    script "modules/local/adata/reviewbundle/main.nf"
+    process "ADATA_REVIEWBUNDLE"
+
+    tag "modules"
+    tag "modules_local"
+
+    test("Should export a review bundle") {
+
+        when {
+            params {
+                outdir = "$outputDir"
+            }
+            process {
+                """
+                input[0] = channel.of([
+                        [ id: 'test' ],
+                        file(params.modules_testdata_base_path + 'genomics/homo_sapiens/scrnaseq/h5ad/SRR28679756_filtered_matrix.h5ad', checkIfExists: true)
+                    ]
+                )
+                input[1] = "cell_type"
+                input[2] = "leiden"
+                """
+            }
+        }
+
+        then {
+            assert process.success
+            assert snapshot(
+                process.out,
+                path(process.out.versions[0]).yaml
+            ).match()
+        }
+
+    }
+
+    test("Should export a review bundle - stub") {
+
+        options '-stub'
+
+        when {
+            params {
+                outdir = "$outputDir"
+            }
+            process {
+                """
+                input[0] = channel.of([
+                        [ id: 'test' ],
+                        file(params.modules_testdata_base_path + 'genomics/homo_sapiens/scrnaseq/h5ad/SRR28679756_filtered_matrix.h5ad', checkIfExists: true)
+                    ]
+                )
+                input[1] = "cell_type"
+                input[2] = "leiden"
+                """
+            }
+        }
+
+        then {
+            assert process.success
+
+            assert snapshot(process.out).match()
+        }
+
+    }
+
+}
